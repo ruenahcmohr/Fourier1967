@@ -1,529 +1,558 @@
-      subroutine fourt(data,nn,ndim,isign,iform,work)                           
-c  june 30, 1983
-c  watch out for integer*4 on vax!! nn, isign and iform must all
-c    be dimensioned integer*4 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-c     the fast fourier transform in usasi basic fortran                         
-c                                                                               
-c     transform(j1,j2,...) = sum(data(i1,i2,...)*w1**((i1-1)*(j1-1))            
-c                                 *w2**((i2-1)*(j2-1))*...),                    
-c     where i1 and j1 run from 1 to nn(1) and w1=exp(isign*2*pi*                
-c     sqrt(-1)/nn(1)), etc.  there is no limit on the dimensionality            
-c     (number of subscripts) of the data array.  if an inverse                  
-c     transform (isign=+1) is performed upon an array of transformed            
-c     (isign=-1) data, the original data will reappear,                         
-c     multiplied by nn(1)*nn(2)*...  the array of input data may be             
-c     real or complex, at the programmers option, with a saving of              
-c     up to forty per cent in running time for real over complex.               
-c     (for fastest transform of real data, nn(1) should be even.)               
-c     the transform values are always complex, and are returned in the          
-c     original array of data, replacing the input data.  the length             
-c     of each dimension of the data array may be any integer.  the              
-c     program runs faster on composite integers than on primes, and is          
-c     particularly fast on numbers rich in factors of two.                      
-c                                                                               
-c     timing is in fact given by the following formula.  let ntot be the        
-c     total number of points (real or complex) in the data array, that          
-c     is, ntot=nn(1)*nn(2)*...  decompose ntot into its prime factors,          
-c     such as 2**k2 * 3**k3 * 5**k5 * ...  let sum2 be the sum of all           
-c     the factors of two in ntot, that is, sum2 = 2*k2.  let sumf be            
-c     the sum of all other factors of ntot, that is, sumf = 3*k3+5*k5+..        
-c     the time taken by a multidimensional transform on these ntot data         
-c     point add time = six microseconds), t = 3000 + ntot*(600+40*sum2+         
-c     is t = t0 + ntot*(t1+t2*sum2+t3*sumf).  on the cdc 3300 (floating         
-c     175*sumf) microseconds on complex data.                                   
-c     implementation of the definition by summation will run in a time          
-c                                                                               
-c     proportional to ntot*(nn(1)+nn(2)+...).  for highly composite ntot        
-c     the savings offered by this program can be dramatic.  a one-dimen-        
-c     sional array 4000 in length will be transformed in 4000*(600+             
-c     40*(2+2+2+2+2)+175*(5+5+5)) = 14.5 seconds versus about 4000*             
-c     4000*175 = 2800 seconds for the straightforward technique.                
-c                                                                               
-c     the fast fourier algorithm places two restrictions upon the               
-c     nature of the data beyond the usual restriction that                      
-c     the data form one cycle of a periodic function.  they are--               
-c     1.  the number of input data and the number of transform values           
-c     must be the same.                                                         
-c     2. considering the data to be in the time domain,                         
-c     they must be equi-spaced at intervals of dt.  further, the trans-         
-c     form values, considered to be in frequency space, will be equi-           
-c     spaced from 0 to 2*pi*(nn(i)-1)/(nn(i)*dt) at intervals of                
-c     2*pi/(nn(i)*dt) for each dimension of length nn(i).  of course,           
-c     dt need not be the same for every dimension.                              
-c                                                                               
-c     the calling sequence is--                                                 
-c     call fourt(data,nn,ndim,isign,iform,work)                                 
-c                                                                               
-c     data is the array used to hold the real and imaginary parts               
-c     of the data on input and the transform values on output.  it              
-c     is a multidimensional floating point array, with the real and             
-c     imaginary parts of a datum stored immediately adjacent in storage         
-c     (such as fortran iv places them).  the extent of each dimension           
-c     is given in the integer array nn, of length ndim.  isign is -1            
-c     to indicate a forward transform (exponential sign is -) and +1            
-c     for an inverse transform (sign is +).  iform is +1 if the data and        
-c     the transform values are complex.  it is 0 if the data are real           
-c     but the transform values are complex.  if it is 0, the imaginary          
-c     parts of the data should be set to zero.  as explained above, the         
-c     transform values are always complex and are stored in array data.         
-c     work is an array used for working storage.  it is not necessary           
-c     if all the dimensions of the data are powers of two.  in this case        
-c     it may be replaced by 0 in the calling sequence.  thus, use of            
-c     powers of two can free a good deal of storage.  if any dimension          
-c     is not a power of two, this array must be supplied.  it is                
-c     floating point, one dimensional of length equal to twice the              
-c     largest array dimension (i.e., nn(i) ) that is not a power of             
-c     two.  therefore, in one dimension for a non power of two,                 
-c     work occupies as many storage locations as data.  if supplied,            
-c     work must not be the same array as data.  all subscripts of all           
-c     arrays begin at one.                                                      
-c                                                                               
-c     example 1.  three-dimensional forward fourier transform of a              
-c     complex array dimensioned 32 by 25 by 13 in fortran iv.                   
-                                                                                
-c     complex array dimensioned 32 by 25 by 13 in fortran iv.                   
-c     dimension data(32,25,13),work(50),nn(3)                                   
-c     complex data                                                              
-c     data nn/32,25,13/                                                         
-c     do 1 i=1,32                                                               
-c     do 1 j=1,25                                                               
-c     do 1 k=1,13                                                               
-c  1  data(i,j,k)=complex value                                                 
-c     call fourt(data,nn,3,-1,1,work)                                           
-c                                                                               
-c     example 2.  one-dimensional forward transform of a real array of          
-c     length 64 in fortran ii.                                                  
-c     dimension data(2,64)                                                      
-c     do 2 i=1,64                                                               
-c     data(1,i)=real part                                                       
-c  2  data(2,i)=0.                                                              
-c     call fourt(data,64,1,-1,0,0)                                              
-c                                                                               
-c     there are no error messages or error halts in this program.  the          
-c     program returns immediately if ndim or any nn(i) is less than one.        
-c                                                                               
-c     program by norman brenner from the basic program by charles               
-c     rader (both of mit lincoln laboratory).  may 1967.  the idea              
-c     for the digit reversal was suggested by ralph alter (also mit ll).        
-c     this is the fastest and most versatile version of the fft known           
-c     to the author.  a program called four2 is available that also             
-c     performs the fast fourier transform and is written in usasi basic         
-c     fortran.  it is about one third as long and restricts the                 
-c     dimensions of the input array (which must be complex) to be powers        
-c     of two.  another program, called four1, is one tenth as long and          
-c     runs two thirds as fast on a one-dimensional complex array whose          
-c     length is a power of two.                                                 
-c                                                                               
-c     reference--                                                               
-c     fast fourier transforms for fun and profit, w. gentleman and              
-c     g. sande, 1966 fall joint computer conference.                            
-c                                                                               
-c     the work reported in this document was performed at lincoln lab-          
-c     oratory, a center for research operated by massachusetts institute        
-c     of technology, with the support of the u.s. air force under               
-c     contract af 19(628)-5167.                                                 
-      dimension data(*),nn(1),ifact(32),work(1)                                 
-      integer*4 nn,isign,iform
-      twopi=6.283185307                                                         
-      rthlf=.7071067812                                                         
-      if(ndim-1)920,1,1                                                         
-1     ntot=2                                                                    
-      do 2 idim=1,ndim                                                          
-      if(nn(idim))920,920,2                                                     
-2     ntot=ntot*nn(idim)                                                        
-c                                                                               
-c     main loop for each dimension                                              
-c                                                                               
-      np1=2                                                                     
-      do 910 idim=1,ndim                                                        
-      n=nn(idim)                                                                
-      np2=np1*n                                                                 
-      if(n-1)920,900,5                                                          
-c                                                                               
-c     is n a power of two and if not, what are its factors                      
-c                                                                               
-5     m=n                                                                       
-      ntwo=np1                                                                  
-      if=1                                                                      
-      idiv=2                                                                    
-10    iquot=m/idiv                                                              
-      irem=m-idiv*iquot                                                         
-      if(iquot-idiv)50,11,11                                                    
-11    if(irem)20,12,20                                                          
-12    ntwo=ntwo+ntwo                                                            
-      ifact(if)=idiv                                                            
-      if=if+1                                                                   
-      m=iquot                                                                   
-      go to 10                                                                  
-20    idiv=3                                                                    
-      inon2=if                                                                  
-30    iquot=m/idiv                                                              
-      irem=m-idiv*iquot                                                         
-      if(iquot-idiv)60,31,31                                                    
-31    if(irem)40,32,40                                                          
-32    ifact(if)=idiv                                                            
-      if=if+1                                                                   
-      m=iquot                                                                   
-      go to 30                                                                  
-40    idiv=idiv+2                                                               
-      go to 30                                                                  
-50    inon2=if                                                                  
-      if(irem)60,51,60                                                          
-51    ntwo=ntwo+ntwo                                                            
-      go to 70                                                                  
-60    ifact(if)=m                                                               
-70    non2p=np2/ntwo                                                            
-c                                                                               
-c     separate four cases--                                                     
-c        1. complex transform                                                   
-c        2. real transform for the 2nd, 3rd, etc. dimension.  method--          
-c           transform half the data, supplying the other half by con-           
-c           jugate symmetry.                                                    
-c        3. real transform for the 1st dimension, n odd.  method--              
-c           set the imaginary parts to zero.                                    
-c        4. real transform for the 1st dimension, n even.  method--             
-c           transform a complex array of length n/2 whose real parts            
-c           are the even numbered real values and whose imaginary parts         
-c           are the odd numbered real values.  separate and supply              
-c           the second half by conjugate symmetry.                              
-c                                                                               
-      icase=1                                                                   
-      ifmin=1                                                                   
-      i1rng=np1                                                                 
-      if(idim-4)74,100,100                                                      
-74    if(iform)71,71,100                                                        
-71    icase=2                                                                   
-      i1rng=np0*(1+nprev/2)                                                     
-      if(idim-1)72,72,100                                                       
-72    icase=3                                                                   
-      i1rng=np1                                                                 
-      if(ntwo-np1)100,100,73                                                    
-73    icase=4                                                                   
-      ifmin=2                                                                   
-      ntwo=ntwo/2                                                               
-      n=n/2                                                                     
-      np2=np2/2                                                                 
-      ntot=ntot/2                                                               
-      i=1                                                                       
-      do 80 j=1,ntot                                                            
-      data(j)=data(i)                                                           
-80    i=i+2                                                                     
-c                                                                               
-c     shuffle data by bit reversal, since n=2**k.  as the shuffling             
-c     can be done by simple interchange, no working array is needed             
-c                                                                               
-100   if(non2p-1)101,101,200                                                    
-101   np2hf=np2/2                                                               
-      j=1                                                                       
-      do 150 i2=1,np2,np1                                                       
-      if(j-i2)121,130,130                                                       
-121   i1max=i2+np1-2                                                            
-      do 125 i1=i2,i1max,2                                                      
-      do 125 i3=i1,ntot,np2                                                     
-      j3=j+i3-i2                                                                
-      tempr=data(i3)                                                            
-      tempi=data(i3+1)                                                          
-      data(i3)=data(j3)                                                         
-      data(i3+1)=data(j3+1)                                                     
-      data(j3)=tempr                                                            
-125   data(j3+1)=tempi                                                          
-130   m=np2hf                                                                   
-140   if(j-m)150,150,141                                                        
-141   j=j-m                                                                     
-      m=m/2                                                                     
-      if(m-np1)150,140,140                                                      
-150   j=j+m                                                                     
-      go to 300                                                                 
-c                                                                               
-c     shuffle data by digit reversal for general n                              
-c                                                                               
-200   nwork=2*n                                                                 
-      do 270 i1=1,np1,2                                                         
-      do 270 i3=i1,ntot,np2                                                     
-      j=i3                                                                      
-      do 260 i=1,nwork,2                                                        
-      if(icase-3)210,220,210                                                    
-210   work(i)=data(j)                                                           
-      work(i+1)=data(j+1)                                                       
-      go to 240                                                                 
-220   work(i)=data(j)                                                           
-      work(i+1)=0.                                                              
-240   ifp2=np2                                                                  
-      if=ifmin                                                                  
-250   ifp1=ifp2/ifact(if)                                                       
-      j=j+ifp1                                                                  
-      if(j-i3-ifp2)260,255,255                                                  
-255   j=j-ifp2                                                                  
-      ifp2=ifp1                                                                 
-      if=if+1                                                                   
-      if(ifp2-np1)260,260,250                                                   
-260   continue                                                                  
-      i2max=i3+np2-np1                                                          
-      i=1                                                                       
-      do 270 i2=i3,i2max,np1                                                    
-      data(i2)=work(i)                                                          
-      data(i2+1)=work(i+1)                                                      
-270   i=i+2                                                                     
-c     main loop for factors of two.                                             
-c     w=exp(isign*2*pi*sqrt(-1)*m/(4*mmax)).  check for w=isign*sqrt(-1)        
-c     and repeat for w=w*(1+isign*sqrt(-1))/sqrt(2).                            
-c                                                                               
-300   if(ntwo-np1)600,600,305                                                   
-305   np1tw=np1+np1                                                             
-      ipar=ntwo/np1                                                             
-310   if(ipar-2)350,330,320                                                     
-320   ipar=ipar/4                                                               
-      go to 310                                                                 
-330   do 340 i1=1,i1rng,2                                                       
-      do 340 k1=i1,ntot,np1tw                                                   
-      k2=k1+np1                                                                 
-      tempr=data(k2)                                                            
-      tempi=data(k2+1)                                                          
-      data(k2)=data(k1)-tempr                                                   
-      data(k2+1)=data(k1+1)-tempi                                               
-      data(k1)=data(k1)+tempr                                                   
-340   data(k1+1)=data(k1+1)+tempi                                               
-350   mmax=np1                                                                  
-360   if(mmax-ntwo/2)370,600,600                                                
-370   lmax=max0(np1tw,mmax/2)                                                   
-      do 570 l=np1,lmax,np1tw                                                   
-      m=l                                                                       
-      if(mmax-np1)420,420,380                                                   
-380   theta=-twopi*float(l)/float(4*mmax)                                       
-      if(isign)400,390,390                                                      
-390   theta=-theta                                                              
-400   wr=cos(theta)                                                             
-      wi=sin(theta)                                                             
-410   w2r=wr*wr-wi*wi                                                           
-      w2i=2.*wr*wi                                                              
-      w3r=w2r*wr-w2i*wi                                                         
-      w3i=w2r*wi+w2i*wr                                                         
-420   do 530 i1=1,i1rng,2                                                       
-      kmin=i1+ipar*m                                                            
-      if(mmax-np1)430,430,440                                                   
-430   kmin=i1                                                                   
-440   kdif=ipar*mmax                                                            
-450   kstep=4*kdif                                                              
-      if(kstep-ntwo)460,460,530                                                 
-460   do 520 k1=kmin,ntot,kstep                                                 
-      k2=k1+kdif                                                                
-      k3=k2+kdif                                                                
-      k4=k3+kdif                                                                
-      if(mmax-np1)470,470,480                                                   
-470   u1r=data(k1)+data(k2)                                                     
-      u1i=data(k1+1)+data(k2+1)                                                 
-      u2r=data(k3)+data(k4)                                                     
-      u2i=data(k3+1)+data(k4+1)                                                 
-      u3r=data(k1)-data(k2)                                                     
-      u3i=data(k1+1)-data(k2+1)                                                 
-      if(isign)471,472,472                                                      
-471   u4r=data(k3+1)-data(k4+1)                                                 
-      u4i=data(k4)-data(k3)                                                     
-      go to 510                                                                 
-472   u4r=data(k4+1)-data(k3+1)                                                 
-      u4i=data(k3)-data(k4)                                                     
-      go to 510                                                                 
-480   t2r=w2r*data(k2)-w2i*data(k2+1)                                           
-      t2i=w2r*data(k2+1)+w2i*data(k2)                                           
-      t3r=wr*data(k3)-wi*data(k3+1)                                             
-      t3i=wr*data(k3+1)+wi*data(k3)                                             
-      t4r=w3r*data(k4)-w3i*data(k4+1)                                           
-      t4i=w3r*data(k4+1)+w3i*data(k4)                                           
-      u1r=data(k1)+t2r                                                          
-      u1i=data(k1+1)+t2i                                                        
-      u2r=t3r+t4r                                                               
-      u2i=t3i+t4i                                                               
-      u3r=data(k1)-t2r                                                          
-      u3i=data(k1+1)-t2i                                                        
-      if(isign)490,500,500                                                      
-490   u4r=t3i-t4i                                                               
-      u4i=t4r-t3r                                                               
-      go to 510                                                                 
-500   u4r=t4i-t3i                                                               
-      u4i=t3r-t4r                                                               
-510   data(k1)=u1r+u2r                                                          
-      data(k1+1)=u1i+u2i                                                        
-      data(k2)=u3r+u4r                                                          
-      data(k2+1)=u3i+u4i                                                        
-      data(k3)=u1r-u2r                                                          
-      data(k3+1)=u1i-u2i                                                        
-      data(k4)=u3r-u4r                                                          
-520   data(k4+1)=u3i-u4i                                                        
-      kdif=kstep                                                                
-      kmin=4*(kmin-i1)+i1                                                       
-      go to 450                                                                 
-530   continue                                                                  
-      m=m+lmax                                                                  
-      if(m-mmax)540,540,570                                                     
-540   if(isign)550,560,560                                                      
-550   tempr=wr                                                                  
-      wr=(wr+wi)*rthlf                                                          
-      wi=(wi-tempr)*rthlf                                                       
-      go to 410                                                                 
-560   tempr=wr                                                                  
-      wr=(wr-wi)*rthlf                                                          
-      wi=(tempr+wi)*rthlf                                                       
-      go to 410                                                                 
-570   continue                                                                  
-      ipar=3-ipar                                                               
-      mmax=mmax+mmax                                                            
-      go to 360                                                                 
-c                                                                               
-c     main loop for factors not equal to two.                                   
-c     w=exp(isign*2*pi*sqrt(-1)*(j1+j2-i3-1)/ifp2)                              
-c                                                                               
-600   if(non2p-1)700,700,601                                                    
-601   ifp1=ntwo                                                                 
-      if=inon2                                                                  
-610   ifp2=ifact(if)*ifp1                                                       
-      theta=-twopi/float(ifact(if))                                             
-      if(isign)612,611,611                                                      
-611   theta=-theta                                                              
-612   wstpr=cos(theta)                                                          
-      wstpi=sin(theta)                                                          
-      do 650 j1=1,ifp1,np1                                                      
-      thetm=-twopi*float(j1-1)/float(ifp2)                                      
-      if(isign)614,613,613                                                      
-613   thetm=-thetm                                                              
-614   wminr=cos(thetm)                                                          
-      wmini=sin(thetm)                                                          
-      i1max=j1+i1rng-2                                                          
-      do 650 i1=j1,i1max,2                                                      
-      do 650 i3=i1,ntot,np2                                                     
-      i=1                                                                       
-      wr=wminr                                                                  
-      wi=wmini                                                                  
-      j2max=i3+ifp2-ifp1                                                        
-      do 640 j2=i3,j2max,ifp1                                                   
-      twowr=wr+wr                                                               
-      j3max=j2+np2-ifp2                                                         
-      do 630 j3=j2,j3max,ifp2                                                   
-      jmin=j3-j2+i3                                                             
-      j=jmin+ifp2-ifp1                                                          
-      sr=data(j)                                                                
-      si=data(j+1)                                                              
-      oldsr=0.                                                                  
-      oldsi=0.                                                                  
-      j=j-ifp1                                                                  
-620   stmpr=sr                                                                  
-      stmpi=si                                                                  
-      sr=twowr*sr-oldsr+data(j)                                                 
-      si=twowr*si-oldsi+data(j+1)                                               
-      oldsr=stmpr                                                               
-      oldsi=stmpi                                                               
-      j=j-ifp1                                                                  
-      if(j-jmin)621,621,620                                                     
-621   work(i)=wr*sr-wi*si-oldsr+data(j)                                         
-      work(i+1)=wi*sr+wr*si-oldsi+data(j+1)                                     
-630   i=i+2                                                                     
-      wtemp=wr*wstpi                                                            
-      wr=wr*wstpr-wi*wstpi                                                      
-640   wi=wi*wstpr+wtemp                                                         
-      i=1                                                                       
-      do 650 j2=i3,j2max,ifp1                                                   
-      j3max=j2+np2-ifp2                                                         
-      do 650 j3=j2,j3max,ifp2                                                   
-      data(j3)=work(i)                                                          
-      data(j3+1)=work(i+1)                                                      
-650   i=i+2                                                                     
-      if=if+1                                                                   
-      ifp1=ifp2                                                                 
-      if(ifp1-np2)610,700,700                                                   
-c                                                                               
-c     complete a real transform in the 1st dimension, n even, by con-           
-c     jugate symmetries.                                                        
-c                                                                               
-700   go to (900,800,900,701),icase                                             
-701   nhalf=n                                                                   
-      n=n+n                                                                     
-      theta=-twopi/float(n)                                                     
-      if(isign)703,702,702                                                      
-702   theta=-theta                                                              
-703   wstpr=cos(theta)                                                          
-      wstpi=sin(theta)                                                          
-      wr=wstpr                                                                  
-      wi=wstpi                                                                  
-      imin=3                                                                    
-      jmin=2*nhalf-1                                                            
-      go to 725                                                                 
-710   j=jmin                                                                    
-      do 720 i=imin,ntot,np2                                                    
-      sumr=(data(i)+data(j))/2.                                                 
-      sumi=(data(i+1)+data(j+1))/2.                                             
-      difr=(data(i)-data(j))/2.                                                 
-      difi=(data(i+1)-data(j+1))/2.                                             
-      tempr=wr*sumi+wi*difr                                                     
-      tempi=wi*sumi-wr*difr                                                     
-      data(i)=sumr+tempr                                                        
-      data(i+1)=difi+tempi                                                      
-      data(j)=sumr-tempr                                                        
-      data(j+1)=-difi+tempi                                                     
-720   j=j+np2                                                                   
-      imin=imin+2                                                               
-      jmin=jmin-2                                                               
-      wtemp=wr*wstpi                                                            
-      wr=wr*wstpr-wi*wstpi                                                      
-      wi=wi*wstpr+wtemp                                                         
-725   if(imin-jmin)710,730,740                                                  
-730   if(isign)731,740,740                                                      
-731   do 735 i=imin,ntot,np2                                                    
-735   data(i+1)=-data(i+1)                                                      
-740   np2=np2+np2                                                               
-      ntot=ntot+ntot                                                            
-      j=ntot+1                                                                  
-      imax=ntot/2+1                                                             
-745   imin=imax-2*nhalf                                                         
-      i=imin                                                                    
-      go to 755                                                                 
-750   data(j)=data(i)                                                           
-      data(j+1)=-data(i+1)                                                      
-755   i=i+2                                                                     
-      j=j-2                                                                     
-      if(i-imax)750,760,760                                                     
-760   data(j)=data(imin)-data(imin+1)                                           
-      data(j+1)=0.                                                              
-      if(i-j)770,780,780                                                        
-765   data(j)=data(i)                                                           
-      data(j+1)=data(i+1)                                                       
-770   i=i-2                                                                     
-      j=j-2                                                                     
-      if(i-imin)775,775,765                                                     
-775   data(j)=data(imin)+data(imin+1)                                           
-      data(j+1)=0.                                                              
-      imax=imin                                                                 
-      go to 745                                                                 
-780   data(1)=data(1)+data(2)                                                   
-      data(2)=0.                                                                
-      go to 900                                                                 
-c                                                                               
-c     complete a real transform for the 2nd, 3rd, etc. dimension by             
-c     conjugate symmetries.                                                     
-c                                                                               
-800   if(i1rng-np1)805,900,900                                                  
-805   do 860 i3=1,ntot,np2                                                      
-      i2max=i3+np2-np1                                                          
-      do 860 i2=i3,i2max,np1                                                    
-      imax=i2+np1-2                                                             
-      imin=i2+i1rng                                                             
-      jmax=2*i3+np1-imin                                                        
-      if(i2-i3)820,820,810                                                      
-810   jmax=jmax+np2                                                             
-820   if(idim-2)850,850,830                                                     
-830   j=jmax+np0                                                                
-      do 840 i=imin,imax,2                                                      
-      data(i)=data(j)                                                           
-      data(i+1)=-data(j+1)                                                      
-840   j=j-2                                                                     
-850   j=jmax                                                                    
-      do 860 i=imin,imax,np0                                                    
-      data(i)=data(j)                                                           
-      data(i+1)=-data(j+1)                                                      
-860   j=j-np0                                                                   
-c                                                                               
-c     end of loop on each dimension                                             
-c                                                                               
-900   np0=np1                                                                   
-      np1=np2                                                                   
-910   nprev=n                                                                   
-920   return                                                                    
-      end                                                                       
+      SUBROUTINE FOURT(DATA,NN,NDIM,ISIGN,IFORM,WORK)
+C
+C     THE COOLEY-TUKEY FAST FOURIER TRANSFORM IN USASI BASIC FORTRAN
+C
+C     TRANSFORM(J1,J2,...) = SUM(DATA(I1,I2,...)*W1**((I2-1)*(J2-1))
+C                                *W2**((I2-1)*(J2-1))*...,
+C     WHERE I1 AND J1 RUN FROM 1 TO NN(1) AND W1=EXP(ISIGN*2*PI*
+C     SQRT(-1)/NN(1)), ETC. THERE IS NO LIMIT TO THE DIMENIONALITY
+C     (NUMBER OF SUBSCRIPTS) OF THE DATA ARRAY. IF AN INVERSE
+C     TRANSFORM (ISIGN=+1) IS PERFORMED UPON AN  ARRAY OF TRANSFORMED
+C     (ISIGN=-1) DATA, THE ORIGINAL DATA WILL REAPPEAR,
+C     MULTIPLIED BY NN(1)*NN(2)*... THE ARRAY OF INPUT DATA MUST BE
+C     IN COMPLEX FORMAT. HOWEVER, IF ALL IMAGINARY PARTS ARE ZERO (I.E.
+C     THE DATA ARE DISGUISED REAL) RUNNING TIME IS CUT UP TO FORTY PER-
+C     CENT. (FOR FASTEST TRANSFORM OF REAL DATA, NN(1) SHOULD BE EVEN.)
+C     THE TRANSFORM VALUES ARE ALWAYS COMPLEX, AND ARE RETURNED IN THE
+C     ORIGINAL ARRAY OF DATA, REPLACING THE INPUT DATA. THE LENGTH
+C     OF EACH DIMENSION OF THE DATA ARRAY MAY BE ANY INTEGER. THE
+C     PROGRAM RUNS FASTER ON COMPOSITE INTEGERS THAN ON PRIMES, AND IS
+C     PARTICULARLY FAST ON NUMBES RICH IN FACTORS OF TWO.
+C
+C     TIMING IS IN FACT GIVEN BY THE FOLLOWING FORMULA, LET NTOT BE THE
+C     TOTAL NUMBER OF POINTS (REAL OR COMPLEX) IN THE DATA ARRAY, GTHAT
+c     IS, NTOT=NN(1)*NN(2)*..., DECOMPOSE NTOT INTO ITS PRIME FACTORS,
+C     SUCH AS 2**K2 * 3**K3 * 5**K5 ... LET SUM2 BE THE SUM OF ALL
+C     THE FACTORS OF TWO IN NTOT, THAT IS, SUM2 = 2*K2, LET SUMF BE
+C     THE SUM OF ALL OTHER FACTORS OF NTOT, THAT IS, SUMF = 3*K3+5*K5..
+C     THE TIME TAKEN BY A MULTIDIMENSIONAL TRANSFORM ON THESE NTOT DATA
+C     IS T = T0 + NTOT*(T1+T2*SUM2+T3*SUMF), ON THE CDC 3300 (floating
+C     POINT ADD TIME = SIX MICROSECONDS), T = 3000 + NTOT*(600+40*SUM2+
+C     175*SUMF) MICROSECONDS ON COMPLEX DATA.
+C
+C     IMPLEMENTATION OF THE DEFINITION BY SUMMATION WILL RUN IN A TIME
+C     PROPORTIONAL TO NTOT*(NN(1)+NN(2)+...). FOR HIGHLY COMPOSITE NTOT
+C     THE SAVINGS OFFERED BY THIS PROGRAM CAN BE DRAMATIC, A ONE-DIMEN-
+C     SIONAL ARRAY 4000 I LENGTH WILL BE TRANSFORMED IN 4000*(600+
+C     40*(2+2+2+2+2)+175*(5+5+5)) = 14,5 SECONDS VERSUS ABOUT 4000*
+C     4000*175 = 2800 SECONDS FOR THE STRAIGHTFORWARD TECHNIQUE.
+C
+C     THE FAST FOURIER TRANSFORM PLACES THREE RESTRICTIONS UPON THE
+C     DATA.
+C     1. THE NUMBER OF INPUT DATA AND THE NUMBER OF TRANSFORM VALUES
+C     MUST BE THE SAME.
+C     2. BOTH THE INPUT DATA AND THE TRANSFORM VALUE MUST REPRESENT
+C     EQUISPACED POINTS IN THEIR RESPECTIVE DOMAINS OF TIME AND
+C     FREQUENCY. CALLING THESE SPACINGS DELTAT AND DELTAF, IT MUST BE
+C     TRUE THAT DELTAF=2*PI/(NN(I)*DELTAT), OF COURSE, DELTAT NEED NOT
+C     BE THE SAME FOR EVERY DIMENSION.
+C     3. CONCEPTUALLY AT LEAST, THE INPUT DATA AND THE TRANSFORM OUTPUT
+C     REPRESENT SINGLE CYCLES OF PERIODIC FUNCTIONS.
+C
+C     THE CALLING SEQUENCE IS--
+C     CALL FOURT(DATA,NN,NDIM,ISIGN,IFORM,WORK)
+C
+C     DATA IS THE ARRAY USED TO HOLD THE REAL AND IMAGINARY PARTS
+C     OF THE DATA ON INPUT AND THE TRANSFORM VALUES ON OUTPUT. IT
+C     IS A MULTIDIMENSIONAL FLOATING POINT ARRAY, WITH THE REAL AND
+C     IMAGINARY PARTS OF A DATUM STORED IMMEDIATELY ADJACENT IN STORAGE
+C     (SUCH AS FORTRANIV PLACES THEM). NORMAL FORTRAN ORDERING IS
+C     EXPECTED, THE FIRST SUBSCRIPT CHANGING FASTEST. THE DIMENSIONS
+C     ARE GIVEN IN THE INTERGER ARRAY NN, OF LENGTH NDIM, ISIGN IS -1
+C     TO INDICATE A FORWARD TRANSFORM (EXPONENTIOAL SIGN IS -) AND +1
+C     FOR AN INVERSE TRANSFORM (SIGN IS +), IFORM IS +1 IF THE DATA ARE
+C     COMLEX, 0 IF THE DATA ARE REAL. IF IT IS 0, THE IMAGINARY
+C     PARTS OF THE DATA MUST BE SET TO ZERO. AS EXPLAINED ABOVE, THE
+C     TRANSFORM VALUES ARE ALWAYS AND ARE STORED IN ARRAY DATA.
+C     WORK IS AN ARRAY USED FOR WORKING STORAGE. IT IS FLOATING POINT
+C     REAL, ONE DIMENSIONAL OF LENGTH EQUAL TO TWICE THE LARGEST ARRAY
+C     DIMENSION NN(I) THAT IS NOT A POWER OF TWO. IF ALL NN(I) ARE
+C     POWERS OF TWO, IT IS NOT NEEDED AND MAY BE REPLACED BY ZERO IN THE
+C     CALLING SEQUENCE. THUS, FOR A ONE-DIMENSIONAL ARRAY, NN(1) ODD,
+C     WORK OCCUPIES AS MANY STORAGE LOCATIONS AS DATA. IF SUPPLIED,
+C     WORK MUST NOT BE THE SAME ARRAY AS DATA. ALL SUBSCRIPTS OF ALL
+C     ARRAYS BEGIN AT ONE.
+C
+C     EXAMPLE 1.  THREE-DIMENSIONAL FORWARD FOURIER TRANSFORM OF A
+C     COMPLEX ARRAY DIMENSIONED 32 BY 25 BY 13 IN FORTRAN IV.
+C     DIMENSION DATA(32,25,13),WORK(50),NN(3)
+C     COMPLEX DATA
+C     DATA NN/32,25,13/
+C     DO 1 I=1,32
+C     DO 1 J=1,25
+C     DO 1 K=1,13
+C  1  DATA(I,J,K)=COMPLEX VALUE
+C     CALL FOURT(DATA,NN,3,-1,1,WORK)
+C
+C     EXAMPLE 2.  ONE-DIMENSIONAL FORWARD TRANSFORM OF A REAL ARRAY OF
+C     LENGTH 64 IN FORTRAN II,
+C     DIMENSION DATA(2,64)
+C     DO 2,I=1,64
+C     DATA(1,I)=REAL PART
+C  2  DATA(2,I)=0.
+C     CALL FOURT(DATA,64,1,-1,0,0)
+C
+C     THERE ARE NO ERROR MESSAGES OR ERROR HALTS IN THIS PROGRAM. THE
+C     PROGRAM RETURNS IMMEDIATELY IF NDIM OR ANY NN(1) IS LESS THAN ONE.
+C
+C     PROGRAM BY NORMAL BRENNER FROM THE BASIC PROGRAM BY CHARLES
+C     RADER, JUNE 1967, THE IDEA FOR THE DIGIT REVERSAL WAS
+C     SUGGESTED BY RALPH ALTER.
+C
+C     THIS IS THE FASTEST AND MOST VERSATILE VERSION OF THE FFT KNOWN
+C     TO THE AUTHOR. A PROGRAM CALLED FOUR2 IS AVAILABLE THAT ALSO
+C     PERFORMS THE FAST FOURIER TRANSFORM AND IS WRITTEN IN USASI BASIC
+C     FORTRAN. IT IS ABOUT ONE THIRD AS LONG AND RESTRICTS THE
+C     DIMENSIONS OF THE INPUT ARRAY (WHICH MUST BE COMPLEX) TO BE POWERS
+C     OF TWO. ANOTHER PROGRAM, CALLED FOUR1, IS ONE THENTH AS LONG AND
+C     RUNS TWO THIRDS AS FAST ON A ONE-DIMENSIONAL COMPLEX ARRAY WHOSE
+C     LENGTH IS A POWER OF TWO.
+C
+C     REFERENCE--
+C     IEEE AUDIO TRANSACTIONS (JUNE 1967), SPECIAL ISSUE ON THE FFT.
+C
+      DIMENSION DATA(1),NN(1),IFACT(32),WORK(1)
+      TWOPI=6.283185307
+      RTHLF=.70710 67812
+      IF(NDIM-1)920,1,1
+1     NTOT=2
+      DO 2 IDIM=1,NDIM
+      IF(NN(IDIM))920,920,2
+2     NTOT=NTOT*NN(IDIM)
+C
+C     MAIN LOOP FOR EACH DIMENSION
+C
+      NP1=2
+      DO 910 IDIM=1,NDIM
+      N=NN(IDIM)
+      NP2=NP1*N
+      IF(N-1)920,900,5
+C
+C     IS N A POWER OF TWO AND IF NOT, WHAT ARE ITS FACTORS
+C
+5     M=N
+      NTWO=NP1
+      IF=1
+      IDIV=2
+10    IQUOT=M/IDIV
+      IREM=M-IDIV*IQUOT
+      IF(IQUOT-IDIV)50,11,11
+11    IF(IREM)20,12,20
+12    NTWO=NTWO+NTWO
+      IFACT(IF)=IDIV
+      IF=IF+1
+      M=IQUOT
+      GO TO 10
+20    IDIV=3
+      INON2=IF
+30    IQUOT=M/IDIV
+      IREM=M-IDIV*IQUOT
+      IF(IQUOT-IDIV)60,31,31
+31    IF(IREM)40,32,40
+32    IFACT(IF)=IDIV
+      IF=IF+1
+      M=IQUOT
+      GO TO 30
+40    IDIV=IDIV+2
+      GO TO 30
+50    INON2=IF
+      IF(IREM)60,51,60
+51    NTWO=NTWO+NTWO
+      GO TO 70
+60    IFACT(IF)=M
+C     
+C     SEPARATE FOUR CASES--
+C        1. COMPLEX TRANSFORM OR REAL TRANSFORM FORT THE 4TH, 5TH,ETC.
+C           DIMENSIONS,
+C        2. REAL TRANSFORM FOR THE 2ND OR 3RD DIMENSION, METHOD--
+C           TRANSFORM HALF THE DATA, SUPPLYING THE OTHER HALF BY CON-
+C           JUGATE SYMMETRY,
+C        3. REAL TRANSFORM FOR THE 1ST DIMENSION, N ODD, METHOD--
+C           SET THE IMAGINARY PARTS TO ZERO.
+C        4. REAL TRANSFORM FOR THE 1ST DIMENSION, N EVEN, METHOD--
+C           TRANSFORM A COMPL ARRAY OF LENGTH N/2 WHOSE REAL PARTS
+C           ARE THE EVEN NUMBERED REAL VALUES AND WHOSE IMAGINARY PARTS
+C           ARE THE ODD NUMBERED REAL VALUES, SEPARATE AND SUPPLY
+C           THE SECOND HALF BY CONJUGATE SYMMETRY.
+C
+70    ICASE=1
+      IFMIN=1
+      I1RNG=NP1
+      IF(IDIM-4)71,100,100
+71    IF(IFORM)72,72,100
+72    ICASE=2
+      I1RNG=NP0*(1+NPREV/2)
+      IF(IIDIM-1)73,73,100
+73    ICASE=3
+      I1RNG=NP1
+      IF(NTWO-NP1)100,100,74
+74    ICASE=4
+      IFMIN=2
+      NTWO=NTWO/2
+      N=N/2
+      NP2=NP2/2
+      NTOT=NTOT/2
+      I=1
+      DO 80 J=1,NTOT
+      DATA(J)=DATA(I)
+80    I=I+2
+C     
+C     SHUFFLE DATA BY BIT REVERSAL, SINCE N=2**K, AS THE SHUFFLING
+C     CAN BE DONE BY SIMPLE INTERCHANGE, NO WORKING ARRAY IS NEEDED
+C
+100   IF(NTWO-NP2)200,110,110
+110   NP2HF=NP2/2
+      J=1
+      DO 150 I2=1,NP2,NP1
+      IF(J-I2)120,130,130
+120   I1MAX=I2+NP1-2
+      DO 125 I1=I2,I1MAX,2
+      DO 125 I3=I1,NTOT,NP2
+      J3=J+I3-I2
+      TEMPR=DATA(I3)
+      TEMPI=DATA(I3+1)
+      DATA(I3)=DATA(J3)
+      DATA(I3+1)=DATA(J3+1)
+      DATA(J3)=TEMPR
+125   DATA(J3+1)=TEMPI
+130   M=NP2HF
+140   IF(J-M)150,150,145
+145   J=J-M
+      M=M/2
+      IF(M-NP1)150,140,140
+150   J=J+M
+      GO TO 300
+C     
+C     SHUFFLE DATA BY DIGIT REVERSAL FOR GENERAL N
+C
+200   NWORK=2*N
+      DO 270 I1=1,NP1,2
+      DO 270 I3=I1,NTOT,NP2
+      J=I3
+      DO 260 I=1,NWORK,2
+      IF(ICASE-3)210,220,210
+210   WORK(I)=DATA(J)
+      WORK(I+1)=DATA(J+1)
+      GO TO 230
+220   WORK(I)=DATA(J)
+      WORK(I+1)=0
+230   IFP2=NP2
+      IF=IFMIN
+240   IFP1=IFP2/IFACT(IF)
+      J=J+IFP1
+      IF(J-I3-IFP2)260,250,250
+250   J=J-IFP2
+      IFP2=IFP1
+      IF=IF+1
+      IF(IFP2-NP1)260,260,240
+260   CONTINUE
+      I2MAX=I3+NP2-NP1
+      I=1
+      DO 270 I2=I3,I2MAX,NP1
+      DATA(I2)=WORK(I)
+      DATA(I2+1)=WORK(I+1)
+270   I=I+2
+C
+C     MAIN LOOP FOR FACTORS OF TWO, PERFORM FOURIER TRANSFORMS OF
+C     LENGTH FOUR, WITH ONE OF LENGTH TWO IF NEEDED. THE TWIDDLE FACTOR
+C     W=EXP(ISIGN*2*PI*SQRT(-1)*M/(4*MMAX)), CHECK FOR W=ISIGN*SQRT(-1)
+C     AND REPEAT FOR W=W*(1+ISIGN*SQRT(-1))/SQRT(2).
+C
+300   IF(NTWO-NP1)600,600,305
+305   NP1TW=NP1+NP1
+      IPAR=NTWO/NP1
+310   IF(IPAR-2)350,330,320
+320   IPAR=IPAR/4
+      GO TO 310
+330   DO 340 I1=1,I1RNG,2
+      DO 340 K1=I1,NTOT,NP1TW
+      K2=K1+NP1
+      TEMPR=DATA(K2)
+      TEMPI=DATA(K2+1)
+      DATA(K2)=DATA(K1)-TEMPR
+      DATA(K2+1)=DATA(K1+1)-TEMPI
+      DATA(K1)=DATA(K1)+TEMPR
+340   DATA(K1+1)=DATA(K1+1)+TEMPI
+350   MMAX=NP1
+360   IF(MMAX-NTWO/2)370,600,600
+370   LMAX=MAX0(NP1TW,MMAX/2)
+      DO 570 L=NP1,LMAX,NP1TW
+      M=L
+      IF(MMAX-NP1)420,420,380
+380   THETA=-TWOPI*FLOAT(L)/FLOAT(4*MMAX)
+      IF(ISIGN)400,390,390
+390   THETA=-THETA
+400   WR=COS(THETA)
+      WI=SIN(THETA)
+410   W2R=WR*WR-WI*WI
+      W2I=2.*WR*WI
+      W3R=W2R*WR-W2I*WI
+      W3I=W2R*WI+W2I*WR
+420   DO 530 I1=1,I1RNG,2
+      KMIN=I1*IPAR*M
+      IF(MMAX-NP1)430,430,440
+430   KMIN=I1
+440   KDIF=IPAR*MMAX
+450   KSTEP=4*KDIF
+      IF(KSTEP-NTWO)460,460,530
+460   DO 520 K1=KMIN,NTOT,KSTEP
+      K2=K1+KDIF
+      K3=K2+KDIF
+      K4=K3+KDIF
+      IF(MMAX-NP1)470,470,480
+470   U1R=DATA(K1)+DATA(K2)
+      U1I=DATA(K1+1)+DATA(K2+1)
+      U2R=DATA(K3)+DATA(K4)
+      U2I=DATA(K3+1)+DATA(K4+1)
+      U3R=DATA(K1)-DATA(K2)
+      U3I=DATA(K1+1)-DATA(K2+1)
+      IF(ISIGN)471,472,472
+471   U4R=DATA(K3+1)-DATA(K4+1)
+      U4I=DATA(K4)-DATA(K3)
+      GO TO 510
+472   U4R=DATA(K4+1)-DATA(K3+1)
+      U4I=DATA(K3)-DATA(K4)
+      GO TO 510
+480   T2R=W2R*DATA(K2)-W2I*DATA(K2+1)
+      T2I=W2R*DATA(K2+1)+W2I*DATA(K2)
+      T3R=WR*DATA(K3)-WI*DATA(K3+1)
+      T3I=WR*DATA(K3+1)+WI*DATA(K3)
+      T4R=W3R*DATA(K4)-W3I*DATA(K4+1)
+      T4I=W3R*DATA(K4+1)+W3I*DATA(K4)
+      U1R=DATA(K1)+T2R
+      U1I=DATA(K1+1)+T2I
+      U2R=T3R+T4R
+      U2I=T3I+T4I
+      U3R=DATA(K1)-T2R
+      U3I=DATA(K1+1)-T2I
+      IF(ISIGN)490,510,510
+490   U4R=T3I-T4I
+      U4I=T4R-T3R
+      GO TO 510
+500   U4R=T4I-T3I
+      U4I=T3R-T4R
+510   DATA(K1)=U1R+U2R
+      DATA(K1+1)=U1I+U2I
+      DATA(K2)=U3R+U4R
+      DATA(K2+1)=U3I+U4I
+      DATA(K3)=U1R-U2R
+      DATA(K3+1)=U1I-U2I
+      DATA(K4)=U3R-U4R
+520   DATA(K4+1)=U3I-U4I
+      KDIF=KSTEP
+      KMIN=4*(KMIN-I1)+I1
+      GO TO 450
+530   CONTINUE
+      M=M+LMAX
+      IF(M-MMAX)540,540,570
+540   IF(ISIGN)550,560,560
+550   TEMPR=WR
+      WR=(WR+WI)*RTHLF
+      WI=(TEMPR+WI)*RTHLF
+      GO TO 410
+560   TEMPR=WR
+      WR=(WR-WI)*RTHLF
+      WI=(TEMPR+WI)*RTHLF
+      GO TO 410
+570   CONTINUE
+      IPAR=3-IPAR
+      MMAX=MMAX+MMAX
+      GO TO 360
+C
+C     MAIN LOOP FOR FACTORS NOT EQUAL TO TWO, APPLY THE TWIDDLE FACTOR
+C     W=EXP(ISIGN*2*PI*SQRT(-1)*(J1-1)*(J2+J1)/(IFP1+IFP2)),THEN
+C     PERFORM A FOURIER TRANSFORM OF LENGTH IFACT*IF), MAKING USE OF
+C     CONJUGATE SYMMETRIES.
+C
+600   IF(NTWO-NP2)605,700,700
+605   IFP1=NTWO
+      IF=INON2
+      NP1HF=NP1/2
+610   IFP2=IFACT(IF)*IFP1
+      J1MIN=NP1+1
+      IF(J1MIN-IFP1)615,615,640
+615   DO 635 J1=J1MIN,IFP1,NP1
+      THETA=-TWOPI*FLOAT(J1-1)/FLOAT(IFP2)
+      IF(ISIGN)625,620,620
+620   THETA=-THETA
+625   WSTPR=COS(THETA)
+      WSTPI=SIN(THETA)
+      WR=WSTPR
+      WI=WSTPI
+      J2MIN=J1+IFP1
+      J2MAX=J1+IFP2-IFP1
+      DO 635 J2=J2MIN,J2MAX,IFP1
+      I1MAX=J2+I1RNG-2
+      DO 630 I1=J2,I1MAX,2
+      DO 630 J3=I1,NTOT,IFP2
+      TEMPR=DATA(J3)
+      DATA(J3)=DATA(J3)*WR-DATA(J3+1)*WI
+630   DATA(J3+1)=TEMPR*WI+DATA(J3+1)*WR
+      TEMPR=WR
+      WR=WR*WSTPR-WI*WSTPI
+635   WI=TEMPR*WSTPI+WI*WSTPR
+640   THETA=-TWOPI/FLOAT(IFACT(IF))
+      IF(ISIGN)650,645,645
+645   THETA=-THETA
+650   WSTPR=COS(THETA)
+      WSTPI=SIN(THETA)
+      J2RNG=IFP1*(1+IFACT(IF)/2)
+      DO 695 I1=1,I1RNG,2
+      DO 695 I3=I1,NTOT,NP2
+      J2MAX=I3+J2RNG-IFP1
+      DO 690 J2=I3,J2MAX,IFP1
+      J1MAX=J2+IFP2-NP1
+      DO 680 J1=J2,J1MAX,NP1
+      J3MAX=J1+NP2-IFP2
+      DO 680 J3=J1,J3MAX,IFP2
+      JMIN=J3-J2+I3
+      JMAX=JMIN+IFP2-IFP1
+      I=1+(J3-I3)/NP1HF
+      IF(J2-I3)655,655,665
+655   SUMR=0.
+      SUMI=0.
+      DO 660 J=JMIN,JMAX,IFP1
+      SUMR=SUMR+DATA(J)
+660   SUMI=SUMI+DATA(J+1)
+      WORK(I)=SUMR
+      WORK(I+1)=SUMI
+      GO TO 680
+665   ICONJ=1+(IFP2-2*J2+I3+J3)/NP1HF
+      J=JMAX
+      SUMR=DATA(J)
+      SUMI=DATA(J+1)
+      OLDSR=0.
+      OLDSI=0.
+      J=J-IFP1
+670   TEMPR=SUMR
+      TEMPI=SUMI
+      SUMR=TWOWR*SUMR-OLDSR+DATA(J)
+      SUMI=TWOWR*SUMI-OLDSI+DATA(J+1)
+      OLDSR=TEMPR
+      OLDSI=TEMPI
+      J=J-IFP1
+      IF(J-JMIN)675,675,670
+675   TEMPR=WR*SUMR-OLDSR+DATA(J)
+      TEMPI=WI*SUMI
+      WORK(I)=TEMPR-TEMPI
+      WORK(ICONJ)=TEMPR+TEMPI
+      TEMPR=WR*SUMI-OLDSI+DATA(J+1)
+      TEMPI=WI*SUMR
+      WORK(I+1)=TEMPR+TEMPI
+      WORK(ICONJ+1)=TEMPR-TEMPI
+680   CONTINUE
+      IF(J2-I3)685,685,686
+685   WR=WSTPR
+      WI=WSTPI
+      GO TO 690
+686   TEMPR=WR
+      WR=WR*WSTPR-WI*WSTPI
+      WI=TEMPR*WSTPI-WI*WSTPR
+690   TWOWR=WR+WR
+      I=1
+      I2MAX=I3+NP2-NP1
+      DO 695 I2=I3,I2MAX,NP1
+      DATA(I2)=WORK(I)
+      DATA(I2+1)=WORK(I+1)
+695   I=I+2
+      IF=IF+1
+      IFP1=IFP2
+      IF(IFP2-NP2)610,700,700
+C
+C     COMPLETE A REAL TRANSFORM IN THE 1ST DIMENSION, N EVEN, BY CON-
+C     JUGATE SYMMETRIES
+C
+700   GO TO (900,800,900,701),ICASE
+701   NHALF=NDIM
+      N=N+N 
+      THETA=-TWOPI/FLOAT(N)
+      IF(ISIGN)703,702,702
+702   THETA=-THETA
+703   WSTPR=COS(THETA)
+      WSTPI=SIN(THETA)
+      WR=WSTPR
+      WI=WSTPI
+      IMIN=3
+      JMIN=2+NHALF-1
+710   J=JMIN
+      DO 720 I=IMIN,NTOT,NP2
+      SUMR=(DATA(I)+DATA(J))/2.
+      SUMI=(DATA(I+1)+DATA(J+1))/2.
+      DIFR=(DATA(I)-DATA(J))/2.
+      DIFI=(DATA(I+1)-DATA(J+1))/2.
+      TEMPR=WR*SUMI+WI*DIFR
+      TEMPI=WI*SUMI-WR*DIFR
+      DATA(I)=SUMR+TEMPR
+      DATA(I+1)=DIFI-TEMPI
+      DATA(J)=SUMR-TEMPR
+      DATA(J+1)=DIFI+TEMPI
+720   J=J+NP2
+      IMIN=IMIN+2
+      JMIN=JMIN-2
+      TEMPR=WR
+      WR=WR*WSTPR-WI*WSTPI
+      WI=TEMPR*WSTPR+WI*WSTPR
+725   IF(IMIN-JMIN)710,730,740
+730   IF(ISIGN)731,740,740
+731   DO 735 I=IMIN,NTOT,NP2
+735   DATA(I+1)=-DATA(I+1)
+740   NP2=NP2+NP2
+      NTOT=NTOT+NTOT
+      J=NTOT+1
+      IMAX=NTOT/2+1
+745   IMIN=IMAX-2*NHALF
+      I=IMIN
+      GO TO 755
+750   DATA(J)=DATA(I)
+      DATA(J+1)=-DATA(I+1)
+755   I=I+2
+      J=J-2
+      IF(I-IMAX)750,760,760
+760   DATA(J)=DATA(IMIN)-DATA(IMIN+1)
+      DATA(J+1)=0
+      IF(I-J)770,780,780
+765   DATA(J)=DATA(I)
+      DATA(J+1)=DATA(I+1)
+770   I=I-2
+      J=J-2
+      IF(I-IMIN)775,775,765
+775   DATA(J)=DATA(IMIN)+DATA(IMIN+1)
+      DATA(J+1)=0
+      IMAX=IMIN
+      GO TO 745
+780   DATA(1)=DATA(1)+DATA(2)
+      DATA(2)=0
+      GO TO 900
+C     
+C     COMPLETE A REAL TRANSFORM FOR THE 2ND OR 3RD DIMENSION BY
+C     CONJUGATE SYMMETRIES
+C
+800   IF(I1RNG-NP1)805,900,900
+805   DO 860 I3=1,NTOT,NP2
+      I2MAX=I3+NP2-NP1
+      DO 860 I2=I3,I2MAX,NP1
+      IMIN=I2+I1RNG
+      IMAX=I2+NP1-2
+      JMAX=2*I3+NP1-IMIN
+      IF(I2-I3)820,820,810
+810   JMAX=JMAX+NP2
+820   IF(IDIM-2)850,850,830
+830   J=JMAX+NP0
+      DO 840 I=IMIN,IMAX,2
+      DATA(I)=DATA(J)
+      DATA(I+1)=-DATA(J+1)
+840   J=J-2
+850   J=JMAX
+      DO 860 I=IMIN,IMAX,NP0
+      DATA(I)=DATA(J)
+      DATA(I+1)=DATA(J+1)
+860   J=J-NP0
+C
+C     END OF LOOP ON EAXH DIMENSION
+C
+900   NP0=NP1
+      NP1=NP2
+910   NPREV=N
+920   RETURN
+      END
+      
