@@ -16,7 +16,8 @@ C     INPUT DATA https://rosettacode.org/wiki/Fast_Fourier_transform
 
       WRITE  (*,*) "DATA"
       DO 1 I=1,8
-      WRITE (*,*) DATA(I)
+      PRINT 10,DATA(I)
+10    FORMAT (2H (,F6.3,3H , ,F6.3,1H))  
 1     CONTINUE
 
       CALL FOURT(DATA,NN,1,-1,1,WORK)
@@ -32,14 +33,14 @@ C     0,0
 C     1,2.414      
       WRITE (*,*) "FFT (FOURT.F) OF DATA"
       DO 2 I=1,8
-      WRITE (*,*) DATA(I)
+      PRINT 10,DATA(I)
 2     CONTINUE
       
       CALL FOURT(DATA,NN,1,1,1,WORK)
 
       WRITE (*,*) "TRANSFORM BACK"
       DO 3 I=1,8
-      WRITE (*,*) DATA(I)
+      PRINT 10,DATA(I)
 3     CONTINUE
       STOP
       END
